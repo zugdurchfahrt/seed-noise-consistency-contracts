@@ -1,27 +1,73 @@
-# Сводка вызовов `__DEGRADE__` в `window`-пайплайне
+# Сводка вызовов `__DEGRADE__` в актуальном pipeline
 
-Ниже указаны модули, откуда и как вызывается `__DEGRADE__`, в порядке подключения через `main.py` (до `driver.get(...)`), плюс отдельные условные ветки.
+Ниже фиксируется **инвентарное** текущее состояние путей `__DEGRADE__` / `.diag` в `sunami`.
 
-| Порядок (до `driver.get`) | Модуль (где подключается)                  | Откуда в модуле вызывается `__DEGRADE__`                                    | Аргументы вызова                                                                                      | Коды/шаблон                                                                                                                                        |
-| ------------------------- | ------------------------------------------ | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1                         | `set_log.js` (`sunami/main.py:335`)        | `G.__DEGRADE__.diag(...)` и debug-тогглы                                    | `G.__DEGRADE__(normalizedCode, err, extraObj)`; `global.__DEGRADE__("DEBUG_*", null[, extra])`        | `set_log.js:368`, `set_log.js:677`                                                                                                                 |
-| 2                         | `core_window.js` (`sunami/main.py:338`)    | прямые fail-fast точки + `diagDegrade(...)` из `Core.applyTargets`          | `__DEGRADE__(code, err)` и `window.__DEGRADE__(code, err, extra)`                                     | `core_window:*` + `tag + :hooksPost_failed/:promise_contract_failed/:<fail_code>`                                                                  |
-| 3                         | `hide_webdriver.js` (`sunami/main.py:345`) | `degrade(...)` внутри `applyTargetGroup` и webdriver-веток                  | `window.__DEGRADE__(code, err, extra)`                                                                | `groupTag + :preflight_failed/:group_skipped/:apply_failed`, `hide_webdriver:webdriver_*`                                                          |
-| 4                         | `nav_total_set.js` (`sunami/main.py:355`)  | `__navDiag(...)` (только `warn/error`) + `debuglog_push_failed`             | `__navDegrade(code \|\| "nav_total_set", err \|\| null, extra \|\| null)`                             | `nav_total_set:*`, `groupTag + :core_missing/:preflight_failed/:group_skipped/:rollback_failed/:apply_failed`                                      |
-| 5                         | `screen.js` (`sunami/main.py:359`)         | `__screenDiag(...)` через `__DEGRADE__.diag` (или fallback в `__DEGRADE__`) | `__DEGRADE__.diag(level, code, ctx, err)` / `__DEGRADE__(code, err, ctx)`                             | `groupTag + :preflight_failed/:group_skipped/:rollback_failed/:apply_failed`, `screen:orientation_*`                                               |
-| 6                         | `font_module.js` (`sunami/main.py:366`)    | `degrade(...)` в `applyTargetGroup` и event/data fail paths                 | `window.__DEGRADE__(code, err, extra)`                                                                | `groupTag + :target_preflight_failed/:preflight_failed/:group_skipped/:apply_failed`, `fonts:data:set_error_failed`, `fonts:event:dispatch_failed` |
-| 7                         | `canvas.js` (`sunami/main.py:370`)         | catch в blob-hooks                                                          | `window.__DEGRADE__(code, err)`                                                                       | `canvas:toBlob:hook_failed`, `canvas:convertToBlob:hook_failed`                                                                                    |
-| 8                         | `webgl.js` (`sunami/main.py:378`)          | error/warn точки в WebGL hooks                                              | `window.__DEGRADE__(code, err[, extra])`                                                              | `webgl:getExtension:debug_renderer_info_throw`, `webgl:param_whitelist_miss`, `webgl:shaderSourceHook:error`, `webgl:webglHooks:define_failed`     |
-| 9                         | `webgpu.js` (`sunami/main.py:386`)         | `degrade(...)` в `applyCoreTargetsGroup` и Promise reject-ветках            | `window.__DEGRADE__(code, err, extra)`                                                                | `groupTag + :preflight_failed/:<reason>/:rollback_failed/:apply_failed`, `webgpu:*:rejected`                                                       |
-| 10                        | `audiocontext.js` (`sunami/main.py:390`)   | `noteIssue(...)` через `__DEGRADE__.diag` (или fallback)                    | `__DEGRADE__.diag('warn','audiocontext:'+key,ctx,null)` / `__DEGRADE__('audiocontext:'+key,null,ctx)` | динамика `reason:key` (`missing_proto:*`, `non_configurable:*`, ...)                                                                               |
-| 11                        | `context.js` (`sunami/main.py:394`)        | catch-блоки цепочки `getContext`                                            | `global.__DEGRADE__(code, e, {hook,type})` / `{type}`                                                 | `context:getContext:ctx2d_hook_failed`, `...:webgl_hook_failed`, `...:html_hook_failed`, `...:chain_failed`                                        |
+- Это не норматив и не target-state само по себе.
+- Это снимок текущего pipeline `window + worker + service worker`.
+- Порядок ниже описывает порядок сборки / подключения веток, а не гарантированный runtime-порядок всех событий.
 
-## Отдельные (условные) ветки пайплайна
+## 1. Главный window bundle
 
-- `override_ua_data.js` (только Safari): подключается в `sunami/main.py:998`; вызывает `degrade(code, err||null, extra||null)` с кодами `uad_override:*`.
-- `TimezoneOverride_source.js` + `GeoOverride_source.js` (timegeo bundle): подключаются в `sunami/main.py:622` и `sunami/main.py:624`; вызывают `__DEGRADE__(code, err||null, extra||null)` с кодами `tz:*` и `geo:*`.
+Собирается через `build_page_bundle()` в `sunami/main.py`.
+
+| Фаза | Модуль / lane | Откуда идёт вызов | Текущий канал | Комментарий |
+| --- | --- | --- | --- | --- |
+| 1 | `bootstrap_hide.js` | bootstrap transfer / cleanup helper-ы | best-effort adapter к `CanvasPatchContext.__logger.__DEGRADE__`, до `set_log.js` может быть `safe-noop` | pre-logger bootstrap lane; owner-transfer и hidden-space bootstrap |
+| 2 | `set_log.js` | owner логгера, `__DEGRADE__`, synthetic audit/status events | `CanvasPatchContext.__logger.__DEGRADE__.diag(...)` и callable fallback | канонический logger owner-route |
+| 3 | `core_window.js` | `__emit/__throw/__exit`, fail-fast, guard, `Core.applyTargets` | `.diag(...)` / `__DEGRADE__(code, err, extra)` | owner core/guard/toString bridge |
+| 4 | `hide_webdriver.js` | module-local `degrade(...)` и group apply | `.diag(...)` / callable fallback | window stealth patch lane |
+| 5 | `RTCPeerConnection.js` | module-local degrade points | `.diag(...)` / callable fallback | `rtc` surface |
+| 6 | `prng_seed.js` | preflight / state checks | `.diag(...)` / callable fallback | producer PRNG-state, owner-route остаётся `Core.__internal.prng` |
+| 7 | `nav_total_set.js` | `__navDiag(...)`, group apply/rollback | `.diag(...)` / callable fallback | surface `navigator` |
+| 8 | `screen.js` | `__screenDiag(...)`, group apply/rollback | `.diag(...)` / callable fallback | использует `C.state.__SCREEN__` и `C.state.__ENV_PROFILE__.__SCREEN__` |
+| 9 | `font_module.js` | `__fontDiag...` / degrade в target groups | `.diag(...)` / callable fallback | surface `fonts` |
+| 10 | `canvas.js` | hook errors / preflight checks | `.diag(...)` / callable fallback | export surface `window.CanvasPatchHooks` не является owner-state |
+| 11 | `WEBGL_DICKts.js` | preflight / bridge checks | `.diag(...)` / callable fallback | вспомогательная WebGL lane |
+| 12 | `webgl.js` | browser/runtime warnings и apply checks | `.diag(...)` / callable fallback | export surface `window.webglHooks` не является owner-state |
+| 13 | `wrk.js` | window-side worker orchestration, env bus, registration lane | `.diag(...)` / callable fallback | surface `wrk`; связывает `window` и workerscope owner-routes |
+| 14 | `WebgpuWL.js` | whitelist bootstrap / guard / rollback | `.diag(...)` / callable fallback | owner-route `C.state.__WEBGPU_WL_STATE__` |
+| 15 | `webgpu.js` | module degrade / promise contract checks | `.diag(...)` / callable fallback | читает `C.state.__WEBGPU_WL_STATE__` и `Core.__internal.coreToStringState` |
+| 16 | `audiocontext.js` | `__moduleDiag(...)` / `degrade(...)` | `.diag(...)` / callable fallback | surface `audio` |
+| 17 | `context.js` | `emitContextDiag(...)`, getContext chain / hook failures | `.diag(...)` / callable fallback | owner `C.__patchState`, `C.__KEEP_NATIVE_WL__`, `C.__GATEWAY_METHODS__`, `C.__keptNativeRefs__`, `C.__issuedContextRegistry__` |
+
+## 2. Условные window-ветки
+
+| Ветка | Когда включается | Текущий канал | Комментарий |
+| --- | --- | --- | --- |
+| `override_ua_data.js` | Safari-only lane | `.diag(...)` / callable fallback | читает `C.state.__ENV_PROFILE__`; surface `navigator` |
+| `TimezoneOverride_source.js` | timegeo bundle | `.diag(...)` / callable fallback | читает `C.state.__GEO_STATE__` и `C.state.__LANG_STATE__` |
+| `GeoOverride_source.js` | timegeo bundle | `.diag(...)` / callable fallback | читает `C.state.__GEO_STATE__`; surface `geolocation` |
+
+## 3. Worker lanes
+
+Worker path в текущем pipeline не является одной точкой: это цепочка из window-side orchestration, inline bridge и фактического worker-source.
+
+| Фаза | Модуль / lane | Откуда идёт вызов | Текущий канал | Комментарий |
+| --- | --- | --- | --- | --- |
+| 1 | `wrk.js` | window-side orchestration, runtime bootstrap, service-worker registration lane | `.diag(...)` / callable fallback | owner window-side `C.state.__WRK__.bootstrap/runtime/hooks` |
+| 2 | `set_reflect.js` | inline worker bridge (`wrk_BRIDGE`) | scope-local `__DEGRADE__` / `.diag(...)` если доступен | owner-route `C.state.__WRK__.runtime.__CORE_TOSTRING_STATE__` в worker realm |
+| 3 | `worker_bootstrap.js` | page-side bootstrap orchestration для worker patch URLs / hooks | `.diag(...)` / callable fallback через `C.__logger.__DEGRADE__` | surface `worker_bootstrap` |
+| 4 | `WORKER_PATCH_SRC.js` | фактический patch-source в `DedicatedWorker` / `SharedWorker` | scope-local `__DEGRADE__` + relay через `relayDiag` | surface `worker`; проверяет `workerScopeKind` и `actualWorkerScopeKind` |
+
+## 4. Service worker lane
+
+Service worker идёт отдельной CDP-prelude веткой, а не через общий worker bootstrap.
+
+| Фаза | Модуль / lane | Откуда идёт вызов | Текущий канал | Комментарий |
+| --- | --- | --- | --- | --- |
+| 1 | `sw_prelude.js` | CDP prelude для `ServiceWorkerGlobalScope` | scope-local `__DEGRADE__` + relay через `__SW_REPORT_DIAG__` | surface `service_worker`; owner-routes `C.state.__WRK__.bootstrap.__SW_ENV__`, `C.state.__WRK__.runtime.workerScopeKind`, `expectedWorkerScopeKind`, `serviceWorkerLane` |
+
+## 5. Что важно для актуального состояния
+
+- Канонический logger owner-route в window realm: `CanvasPatchContext.__logger.__DEGRADE__`.
+- Guard canonical owner-route: `Core.__internal.guards`, а не `window[key]`.
+- PRNG canonical owner-route: `Core.__internal.prng`.
+- Window toString bridge owner-route: `Core.__internal.coreToStringState`.
+- Worker toString bridge owner-route: `CanvasPatchContext.state.__WRK__.runtime.__CORE_TOSTRING_STATE__`.
+- WebGPU whitelist owner-route: `CanvasPatchContext.state.__WEBGPU_WL_STATE__`.
+- `CanvasPatchHooks` / `webglHooks` — export surfaces функций, а не owner-state.
 
 ## Не доказано
 
-- Точный runtime-порядок самих событий `__DEGRADE__` (он зависит от того, какая ошибка/ветка реально активируется).
-- Таблица выше фиксирует порядок регистрации/подключения модулей, а не гарантированный порядок фактических деградаций в рантайме.
+- Точный runtime-порядок всех деградаций: он зависит от того, какая ветка реально активируется и какие preflight/contract checks срабатывают.
+- Инвентарь выше описывает актуальные execution lanes и точки маршрутизации, но не гарантирует, что каждый модуль эмитит события в каждом прогоне.

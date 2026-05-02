@@ -11,7 +11,7 @@
 ## Быстрые ссылки (состав документа)
 
 - APPENDIX (таблицы/шаблоны маппинга выходов): `Samples4Context\Contracts_mandaratory\DEGRADE_3.0\APPENDIX_MODULE_CODE_TEMPLATE.md`
-- INVENTORY (вызовы `__DEGRADE__`): `Samples4Context\Contracts_mandaratory\DEGRADE_CALLS_SUMMARY.md`
+- INVENTORY (вызовы `__DEGRADE__`): `Samples4Context\Contracts_mandaratory\DEGRADE_3.0\DEGRADE_CALLS_SUMMARY.md`
 - Guard (Core/client): `Samples4Context\Contracts_mandaratory\5._GuardFlagSEED.md`
 
 [NORMATIVE]: #normative
@@ -116,7 +116,7 @@
 - `apply`
 - `export entrypoints by normative defineProperty(enumerable:false)`
 - `hide-after-apply` для служебных own surfaces
-- `releaseGuardFlag(true)` ( Guard (Core/client): `Samples4Context/GuardFlagSEED.md`)
+- `releaseGuardFlag(true)` ( Guard (Core/client): `Samples4Context\Contracts_mandaratory\5._GuardFlagSEED.md`)
 - при ошибке: `rollback descriptors` + `releaseGuardFlag(rollbackOk)`
 
 
@@ -203,7 +203,9 @@ window.CanvasPatchContext?.__logger?.__DEGRADE__?.diag?.(level, code, ctx, err);
 
 
 **Смысл:** записать единый structured-event в буфер логгера.
-Логгер хранит буфер приватно (не через публичный `window.`): внутренний буфер живет внутри `set_log.js` и доступен только через `__DEGRADE__.getBuffer()`, которая возвращает копию.
+Логгер хранит буфер приватно внутри `CanvasPatchContext.__logger`: owner-state буфера живёт в logger-space (`STORE` / `FALLBACK_BUF`) и доступен только через `__DEGRADE__.getBuffer()`, которая возвращает копию.
+
+Bootstrap-исключение: `bootstrap_hide.js` исполняется раньше `set_log.js`, поэтому до установки `CanvasPatchContext.__logger.__DEGRADE__` его adapter работает в режиме best-effort `safe-noop`. Это не легализует `console.*` и не создаёт альтернативный лог-канал: после инициализации логгера единственным owner-route остаётся `CanvasPatchContext.__logger.__DEGRADE__`.
 
 ---
 
@@ -279,9 +281,9 @@ function __moduleDiag(level, code, extra, err) {
 **Смысл:** модули вызывают только `.diag`, а нормализация и единый shape делаются централизованно
 
 ```js
-G.__DEGRADE__(normalizedCode, err, extraObj);
+CanvasPatchContext.__logger.__DEGRADE__.diag(level, normalizedCode, extraObj, err);
 ```
- Нежелательно: __DEGRADE__(code, err) без extra/ctx — теряется структурный контекст события; при отсутствии данных передавать extra/ctx как null/{} по контракту.
+ Нежелательно: прямой `__DEGRADE__(code, err)` без `extra/ctx` и без `.diag` — теряется структурный контекст события и обходится единый `diag`-shape; при отсутствии данных передавать `extra/ctx` как `null/{}` по контракту.
 
 
 
@@ -290,7 +292,7 @@ G.__DEGRADE__(normalizedCode, err, extraObj);
 
 `ctx` MUST иметь форму `{ module, diagTag, surface, key, stage, message, type, data }`, где:
 
-- `stage` ∈ `{ preflight, apply, rollback, contract, hook, runtime, guard }`
+- `stage` ∈ `{ bootstrap, preflight, apply, rollback, contract, hook, runtime, guard, cleanup, audit }`
 - `data.outcome` ∈ `{ return, skip, rollback, throw }`
 - для missing-data `type` MUST быть строго `pipeline missing data` либо `browser structure missing data`
 
@@ -308,8 +310,32 @@ G.__DEGRADE__(normalizedCode, err, extraObj);
 
 ---
 
+## [NORMATIVE] Интеграция с hidden-state owner-routes
 
+Норматив `DEGRADE_3.0` опирается на актуальный hidden-state контракт и не описывает логирование в отрыве от owner-space.
 
+Канонические owner-routes текущего pipeline:
+
+- logger/degrade owner-route: `CanvasPatchContext.__logger.__DEGRADE__`
+- private logger buffer owner-route: `CanvasPatchContext.__logger.STORE` / `CanvasPatchContext.__logger.FALLBACK_BUF`
+- guard canonical owner-route: `Core.__internal.guards`
+- guard sequence owner-route: `Core.__internal.__patchGuardSeq`
+- PRNG canonical owner-route: `Core.__internal.prng`
+- window toString bridge owner-route: `Core.__internal.coreToStringState`
+- worker toString bridge owner-route: `CanvasPatchContext.state.__WRK__.runtime.__CORE_TOSTRING_STATE__`
+- worker/service runtime lane owner-route: `CanvasPatchContext.state.__WRK__.runtime`
+- worker/service bootstrap lane owner-route: `CanvasPatchContext.state.__WRK__.bootstrap`
+- service worker env snapshot owner-route: `CanvasPatchContext.state.__WRK__.bootstrap.__SW_ENV__`
+- WebGPU whitelist owner-route: `CanvasPatchContext.state.__WEBGPU_WL_STATE__`
+
+Следствия для `DEGRADE`:
+
+- `Core.guardFlag/releaseGuardFlag` — public entrypoints, но не storage-owner.
+- worker/service-worker модули могут иметь realm-local bootstrap/runtime mirrors, но не становятся owner-state для window-truth (`C.state.__ENV_PROFILE__`, `C.state.__GEO_STATE__`, `C.state.__NAV_TOTAL_SET__...`).
+- `window.CanvasPatchHooks` и `window.webglHooks` — export surfaces функций, а не owner-state; логирование не должно описывать их как storage-owner.
+- `registerAllHooks` должен жить на `CanvasPatchContext`, а не на `window`.
+
+---
 
 Важно: `ctx.type` классифицирует причину события, но **не задаёт** `policy` и не отменяет `throw/skip`. Приоритеты описаны в [NORMATIVE] правилах ниже.
 
@@ -334,16 +360,25 @@ G.__DEGRADE__(normalizedCode, err, extraObj);
 
 Строго одно из:
 
-`preflight | apply | rollback | contract | hook | runtime | guard`
+`bootstrap | preflight | apply | rollback | contract | hook | runtime | guard | cleanup | audit`
 
-❌ Запрещено вводить новые строковые стадии “по вкусу”.
+`bootstrap` зарезервирован для bootstrap owner-transfer / bootstrap cleanup (`bootstrap_hide.js`).
+
+`cleanup` зарезервирован для logger/bootstrap cleanup-paths.
+
+`audit` зарезервирован для synthetic audit events логгера (`set_log.js`).
+
+❌ Запрещено вводить новые строковые стадии “по вкусу” вне этих owner-routes.
 
 ❌ Запрещена повторная локальная валидация, модуль передаёт `ctx`, а стандартизацию делает централизованно логгер.
 
 ## [NORMATIVE] Допустимые значения `ctx.surface` 
 
 - Для `nav_total_set.js`: `ctx.surface` **всегда** `navigator` (не плодить `nav`/`ua`/`navTotal` и т.п.).
-- Для остальных модулей: `ctx.surface`  = имя модуля (`webgl`, `webgpu`, `hide_webdriver`, `canvas`, `screen`, `fonts`, `rng_set`, `audio`, `timezone`, `geolocation`, `rtcp`,`core_window`).
+- Для window-модулей `ctx.surface` должен совпадать с фактически emitted stable label (`core`, `window`, `logger`, `canvas`, `webgl`, `webgpu`, `screen`, `fonts`, `audio`, `navigator`, `hide_webdriver`, `rtc`, `timezone`, `geolocation`).
+- Для worker/service-worker веток `ctx.surface` должен совпадать с фактически emitted stable lane label (`wrk`, `wrk_BRIDGE`, `worker`, `worker_bootstrap`, `service_worker`).
+
+`ctx.surface` — это stable emitter label текущего owner-route/realm lane, а не обязательно имя файла один в один.
 
 ## [NORMATIVE] Допустимые значения  `ctx.diagTag`
 
@@ -512,7 +547,7 @@ __throw(code, { module, diagTag, surface, key, stage:"apply", message:"apply thr
 
 Инвентаризация текущих мест/порядка подключения и вызовов `__DEGRADE__` ведётся в:
 
-- `Samples4Context/DEGRADE_CALLS_SUMMARY.md`
+- `Samples4Context\Contracts_mandaratory\DEGRADE_3.0\DEGRADE_CALLS_SUMMARY.md`
 
 Это **не** норматив и **не** гарантирует runtime-порядок событий (он зависит от того, какие ветки/ошибки реально срабатывают).
 
