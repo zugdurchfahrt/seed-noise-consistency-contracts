@@ -22,7 +22,7 @@
 
 | Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| bootstrap input incomplete | `bootstrap_hide:*_transfer_incomplete` | `state.__*` owner-path | `bootstrap` | `browser structure missing data` | n/a | skip | n/a |  до logger-ready; fail-fast если нарушен обязательный bootstrap invariant |
+| bootstrap input incomplete | `bootstrap_hide:*_transfer_incomplete` | `state.__*` owner-path | `bootstrap` | `pipeline missing data` | n/a | skip | n/a |  до logger-ready; fail-fast если нарушен обязательный bootstrap invariant |
 | bootstrap owner create failed | `bootstrap_hide:*` | canonical owner-path | `bootstrap` | по причине | throw | throw | n/a | fail-fast |
 
 ### `set_log.js` (`module:'set_log'`, `surface:'logger'` / audit lane)
