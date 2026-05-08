@@ -1,0 +1,385 @@
+#  Правила: Унификация логирования и эскалации ошибок
+
+
+**NORMATIVE SPEC + EXAMPLES + INVENTORY + APPENDIX** для модулей pipeline.
+
+- **[NORMATIVE]** правила обязательны, не интерпретируются “по вкусу”.
+- **[EXAMPLES]** таблицы и маппинги иллюстрируют ожидаемую интеграцию и не отменяют [NORMATIVE].
+- **[INVENTORY]** фиксирует текущее состояние вызовов `__DEGRADE__` в коде; не является нормативом и не гарантирует runtime-порядок событий.
+- **[APPENDIX]** определяет обязательное приложение-шаблон для единообразного оформления примеров и таблиц.
+
+
+---
+## [NORMATIVE] Термины и определения
+
+  1. **Единый канал логирования .diag**: `CanvasPatchContext.__logger.__DEGRADE__?.diag?.(level, code, ctx, err)` (далее - `.diag`)
+
+  2. **Skip патча**: дескриптор не меняется (или группа возвращает `group_skipped`), наружу остаётся исходное поведение (далее - `skip`)
+  3. **Pass-through**: внутри hook вернуть “не трогаем” и вызвать исходную реализацию по месту через `Reflect.apply(...)`.
+  4. **Rollback**: если уже применили часть группы, откатываем дескрипторы и оставляем исходное поведение (далее - `rollback`)
+
+  5. **Fail-fast** + `.diag`  (обязательно)
+    - Отсутствие обязательных точек (`Core`, bridge, обязательные descriptors, критичный контракт Promise/brand).
+    - Нарушение целостности состояния после preflight/post-check.
+
+  6. **Возврат к исходноему состоянию**  реализуется как одно из:
+        **Skip патча**/ **Pass-through** / **Rollback** 
+
+---
+
+
+## Быстрые ссылки (состав документа)
+
+- APPENDIX (таблицы/шаблоны маппинга выходов): `Samples4Context\Contracts_mandaratory\DEGRADE_3.0\APPENDIX_MODULE_CODE_TEMPLATE.md`
+- INVENTORY (вызовы `__DEGRADE__`): `Samples4Context\Contracts_mandaratory\DEGRADE_3.0\DEGRADE_CALLS_SUMMARY.md`
+- Guard (Core/client): `Samples4Context\Contracts_mandaratory\5._GuardFlagSEED.md`
+
+[NORMATIVE]: #normative
+[EXAMPLES]:  #examples
+[INVENTORY]: #inventory
+[APPENDIX]:  #appendix
+
+
+## Цель
+
+Унификация логирования и эскалации ошибок/диагностики через `.diag` без утечек в runtime логирования/диагностикм посредством явно описанной матрицы:
+
+- `policy` (как задано в target/group)
+- `throw/skip` (что реально происходит при ошибке)
+- `rollback` (есть ли откат и когда)
+- `fail-fast` (смысловая стратегия)
+
+---
+
+
+### Основной контракт
+
+- ✅ Строго следовать правилам Внешнего нормативного контракта по реализации `object/function/proxy/property/kinds`
+[Policy_implement_reg.md](file:///c:/55555/switch/Evensteam/Samples4Context/Contracts_mandaratory/1._Policy_implement_reg.md)
+- ✅ Выпополнять требования Hidden state-контракта `CanvasPatchContext`
+[Hidden_State_CanvasPatchContext_Contract.md](file:///c:/55555/switch/Evensteam/Samples4Context/Contracts_mandaratory/2._Hidden_State_CanvasPatchContext_Contract)
+- ✅ Модульные targets/группы обязаны использовать ровно те поля и значения, `kind`  / `policy` и тд,  которые определены в реестре  `Samples4Context\Contracts_mandaratory\APPENDIX_MODULE_CODE_TEMPLATE.md`: 
+- ❌ Никакого архитектурного рефакторинга
+- ❌ Никаких новых абстракций
+- ❌ Никаких изменений сигнатур функций
+
+
+---
+### [NORMATIVE] Норматив логирования и контракт `__DEGRADE__` 
+
+1. - **Назначение - единый вход**: единый вход для диагностических событий
+- **Не менять**:  поведение патчей и диагностики
+- **Требование**: любая "служебная проблема" должна проходить через него с контекстом
+2. `status/guard` ключи обрабатываем штатно через `guardFlag/releaseGuardFlag`.
+   После успешного `apply`guard *НЕ снимается*. Успешный `apply` = больше не запускаться в этом document.
+
+3. На rollback восстанавливаем именно descriptor state, а не только value, чтобы не ломать `enumerable/configurable/writable/get/set`.
+
+---
+
+
+
+#### Единый вызов 
+
+**Единица фиксации проблемы** — сообщение через единый канал `__DEGRADE__` aka (`.diag`)
+
+Сообщение должно содержать:
+
+- Контекст (`level`, `type`, `module`, `diagTag`, `surface`, `key`, `stage`, `message`, `data`)
+- Выполнение продолжается с исходным состоянием после `fallback`/`skip`/`rollback` (если это не обязательный `fail-fast`)
+
+
+```javascript
+window.CanvasPatchContext?.__logger?.__DEGRADE__?.diag?.(level, code, ctx, err);
+```
+
+Нормативный вызов для модулей: `CanvasPatchContext.__logger.__DEGRADE__.diag(...)`.
+
+
+#### Вызов `__DEGRADE__.diag(level, code, ctx, err?)`
+
+Это non-enumerable метод на функции `__DEGRADE__`, который:
+1. Валидирует `level` (`info|warn|error|fatal`) и приводит его к безопасному значению.
+2. Приводит `code` к строке.
+3. Гарантирует, что `ctx` это plain-object (иначе заменяет на `{}`).
+4. Не нормализует `ctx.type`: если это строка, пишет как есть; если нет — оставляет `undefined`. Для missing-data классификации использовать `pipeline missing data` / `browser structure missing data`.
+5. Нормализует `ctx.data` и другие поля через существующую безопасную сериализацию (обрезание DOM/host объектов, циклов, больших строк).
+6. Формирует `extraObj` в едином shape и вызывает базовый контракт:
+
+- `code`: строка (идентификатор события)
+- `err`: `Error|null|any` (ошибка или контекстная причина)
+- `extra`: объект контекста (shape как у `.diag`, должен быть сериализуемым)
+
+`extra` должен следовать shape `diag`: `level`, `type`, `module`, `diagTag`, `surface`, `key`, `stage`, `message`, `data`; отсутствующие поля допустимы как `undefined|null` и нормализуются в `set_log.js`.
+`ctx.type` и `level` всегда пишутся, но они не имеют права “переписать” `policy`.
+
+**Смысл:** записать единый structured-event в буфер логгера.
+Логгер хранит буфер приватно внутри `CanvasPatchContext.__logger`: owner-state буфера живёт в logger-space (`STORE` / `FALLBACK_BUF`) и доступен только через `__DEGRADE__.getBuffer()`, которая возвращает копию.
+
+Bootstrap-исключение: `bootstrap_hide.js` исполняется раньше `set_log.js`, поэтому до установки `CanvasPatchContext.__logger.__DEGRADE__` его adapter работает в режиме best-effort `safe-noop`. Это не легализует `console.*` и не создаёт альтернативный лог-канал: после инициализации логгера единственным owner-route остаётся `CanvasPatchContext.__logger.__DEGRADE__`.
+
+---
+
+#### [NORMATIVE] Шаблон локального адаптера (`__module_name_Diag*` как единственный шлюз)
+
+Цель:  adapter обеспечивает единый маршрут `.diag -> callable -> noop` без `Illegal invocation`, без `console.*`, без локальной пере-классификации `stage/type`.
+
+Нормативные свойства:
+
+- Adapter берёт `.diag.bind(__D)` (корректный method-call).
+- Adapter `never-throw` и `safe-noop` при отсутствии каналов.
+- Adapter не нормализует `ctx.stage/ctx.type` и не мутирует `extra/ctx`.
+
+
+
+## Logger / degrade infra
+
+`set_log.js` — owner logger/degrade infra. Logger/degrade infra живёт внутри:
+
+
+```js
+C.__logger
+  __DEGRADE__
+```
+
+Модули должны вызывать единый diag-channel через module-local adapter:
+
+
+```js
+const __MODULE = "module_name";
+const __SURFACE = "module_name";
+
+const __loggerRoot = (window.CanvasPatchContext && window.CanvasPatchContext.__logger && typeof window.CanvasPatchContext.__logger === "object")
+  ? window.CanvasPatchContext.__logger
+  : null;
+const __D = C && C.__logger && typeof C.__logger.__DEGRADE__ === 'function'
+  ? C.__logger.__DEGRADE__
+  : null;
+const __diag = (__D && typeof __D.diag === 'function') ? __D.diag.bind(__D) : null;
+
+function __emit(level, code, ctx, err) {
+  try {
+    if (__diag) return __diag(level, code, ctx, err);
+    if (typeof __D === "function") {
+      const safeCtx = (ctx && typeof ctx === "object") ? ctx : {};
+      const safeLevel = (level === undefined || level === null) ? "info" : level;
+      const safeErr = (err === undefined || err === null) ? null : err;
+      return __D(code, safeErr, Object.assign({}, safeCtx, { level: safeLevel }));
+    }
+  } catch (emitErr) {
+    return undefined;
+  }
+}
+
+function __moduleDiag(level, code, extra, err) {
+  const x = (extra && typeof extra === "object") ? extra : {};
+  const ctx = {
+    module: __MODULE,
+    diagTag: (typeof x.diagTag === "string" && x.diagTag) ? x.diagTag : __MODULE,
+    surface: __SURFACE,
+    key: (typeof x.key === "string" || x.key === null) ? x.key : null,
+    stage: x.stage,    // no local normalization/re-classification
+    message: x.message,
+    data: Object.prototype.hasOwnProperty.call(x, "data") ? x.data : null,
+    type: x.type       // no local normalization/re-classification
+  };
+  return __emit(level, code, ctx, err);
+}
+```
+
+
+#### [NORMATIVE] Нормализация терминов `ctx` 
+
+Все нормализации (`level`, сериализация `data`, защита от host-объектов/циклов, дедуп) идут в ОДНОМ месте (`set_log.js`), а модули не создают свою нормализацию и свои форматы.
+
+**Смысл:** модули вызывают только `.diag`, а нормализация и единый shape делаются централизованно
+
+```js
+CanvasPatchContext.__logger.__DEGRADE__.diag(level, normalizedCode, extraObj, err);
+```
+Использование прямоого `__DEGRADE__(code, err)` без `extra/ctx` и без `.diag` — теряется структурный контекст события и обходит единый `diag`-shape; при отсутствии данных передавать `extra/ctx` как `null/{}` по контракту.
+
+
+
+
+
+#### [NORMATIVE]  Единый `ctx`-shape (обязательные поля)
+
+`ctx` MUST иметь форму `{ module, diagTag, surface, key, stage, message, type, data }`, где:
+
+- `stage` ∈ `{ bootstrap, preflight, apply, rollback, contract, hook, runtime, guard, cleanup, audit }`
+- `data.outcome` ∈ `{ return, skip, rollback, throw }`
+- для missing-data `type` MUST быть строго `pipeline missing data` либо `browser structure missing data`
+
+- актуальный logger entrypoint резолвится через `CanvasPatchContext.__logger.__DEGRADE__`
+
+- `module` (строка)
+- `diagTag` (строка)
+- `surface` (строка)
+- `key` (строка|null)
+- `stage` (строка)
+- `message` (строка)
+- `data` (object|null; в logger безопасно сериализуется; `null` сохраняется)
+- `type` (строка; для missing-data строго: `pipeline missing data` / `browser structure missing data`; для прочих причин — стабильный классификатор причины)
+---
+
+
+
+## [NORMATIVE]  Классификация проблем `missing data`
+
+Строго **2 группы**:
+
+### 1. `pipeline missing data`
+
+Всё, что "наше":
+
+- profile
+- bridge
+- meta
+- seed
+- ожидаемые пайплайном поля
+- внутренние несостыковки данных
+
+### 2. `browser structure missing data`
+
+Всё, что "из движка/структуры":
+
+- descriptor
+- proto
+- brand
+- receiver
+- Illegal invocation
+- unexpected exception
+- и т.п.
+
+  Важно: `ctx.type` классифицирует причину события, но **не задаёт** `policy` и не отменяет `throw/skip`. Приоритеты описаны в [NORMATIVE] правилах ниже.
+---
+
+---
+#### [NORMATIVE] Приоритеты: `policy` 
+
+### Rule P0 (главное правило приоритета)
+
+1. `policy` из `target/group` обязателен: если `policy:'throw'` **или** `policy:'strict'`, ошибка считается `fail-fast` **для шага патча** (патч не должен продолжаться в неопределённом состоянии).
+2. **Исключение (публичные API):** если `throw` приведёт к тому, что “наружу летит служебка” из публичного API, то действует [NORMATIVE] `WebIDL / движковый throw  Engine-throw pass-through (публичный API)`
+
+
+
+ ---
+##### [NORMATIVE] Допустимые значения `ctx.stage` 
+
+Строго одно из:
+
+`bootstrap | preflight | apply | rollback | contract | hook | runtime | guard | cleanup | audit`
+
+`bootstrap` зарезервирован для bootstrap owner-transfer / bootstrap cleanup (`bootstrap_hide.js`).
+
+`cleanup` зарезервирован для logger/bootstrap cleanup-paths.
+
+`audit` зарезервирован для synthetic audit events логгера (`set_log.js`).
+
+❌ Запрещено вводить новые строковые стадии “по вкусу” вне этих owner-routes.
+
+❌ Запрещена повторная локальная валидация, модуль передаёт `ctx`, а стандартизацию делает централизованно логгер.
+
+
+## [NORMATIVE] Допустимые значения  `ctx.diagTag`
+
+не плодить самодельные теги:
+
+- Базовый `diagTag` = имя модуля (`nav_total_set`, `webgl`, `context`, ...).
+- Для групповых операций разрешено использовать **только уже существующие** значения, которые модуль/ядро уже использует (например `groupTag`, `planItem.tag`, `nav_total_set:safeDefineAcc`).
+- Для WebGL `diagTag: "webglstorage"` разрешён только как subtag producer-storage шага словаря `WEBGL_DICKts.js` / `C.state.__WEBGL_STATE__`; он не является отдельным module identity и не меняет `module: "webgl"`, `surface: "webgl"`.
+
+---
+
+
+## [NORMATIVE] Допустимые значения `ctx.surface` 
+
+- Для `nav_total_set.js`: `ctx.surface` **всегда** `navigator` (не плодить `nav`/`ua`/`navTotal` и т.п.).
+- Для window-модулей `ctx.surface` должен совпадать с фактически emitted stable label (`core`, `window`, `logger`, `canvas`, `webgl`, `webgpu`, `screen`, `fonts`, `audio`, `navigator`, `hide_webdriver`, `rtc`, `timezone`, `geolocation`).
+- Для worker/service-worker веток `ctx.surface` должен совпадать с фактически emitted stable lane label (`wrk`, `wrk_BRIDGE`, `worker`, `worker_bootstrap`, `service_worker`).
+
+`ctx.surface` — это stable emitter label текущего owner-route/realm lane, а не обязательно имя файла один в один.
+
+
+
+#### [NORMATIVE] Constraints (restrictions)
+
+- Придумывать новые форматы `code` (ломает фильтрацию и сравнимость прогонов).
+- Менять `ctx.stage/ctx.surface/ctx.type` на произвольные строки.
+- Логировать проблемы только в `console.*` или в сторонние буферы, минуя `__DEGRADE__`.
+- Подменять поведение публичных API “для удобства” (возвращать не-движковые значения, гасить движковые `TypeError/Illegal invocation`).
+- Повторно считывать метод/функцию после патча вместо возврата к исходному состоянию по месту.
+---
+
+
+
+
+---
+#### [NORMATIVE] Интеграция с hidden-state owner-routes
+
+Норматив `DEGRADE_3.0` опирается на актуальный hidden-state контракт и не описывает логирование в отрыве от owner-space.
+
+Канонические owner-routes текущего pipeline:
+
+- logger/degrade owner-route: `CanvasPatchContext.__logger.__DEGRADE__`
+- private logger buffer owner-route: `CanvasPatchContext.__logger.STORE` / `CanvasPatchContext.__logger.FALLBACK_BUF`
+- guard canonical owner-route: `Core.__internal.guards`
+- guard sequence owner-route: `Core.__internal.__patchGuardSeq`
+- PRNG canonical owner-route: `Core.__internal.prng`
+- window toString bridge owner-route: `Core.__internal.coreToStringState`
+- worker toString bridge owner-route: `CanvasPatchContext.state.__WRK__.runtime.__CORE_TOSTRING_STATE__`
+- worker/service runtime lane owner-route: `CanvasPatchContext.state.__WRK__.runtime`
+- worker/service bootstrap lane owner-route: `CanvasPatchContext.state.__WRK__.bootstrap`
+- service worker env snapshot owner-route: `CanvasPatchContext.state.__WRK__.bootstrap.__SW_ENV__`
+- WebGL dictionary/storage owner-route: `CanvasPatchContext.state.__WEBGL_STATE__`
+- WebGPU whitelist owner-route: `CanvasPatchContext.state.__WEBGPU_WL_STATE__`
+
+Следствия для `DEGRADE`:
+
+- `Core.guardFlag/releaseGuardFlag` — public entrypoints, но не storage-owner.
+- worker/service-worker модули могут иметь realm-local bootstrap/runtime mirrors, но не становятся owner-state для window-truth (`C.state.__ENV_PROFILE__`, `C.state.__GEO_STATE__`, `C.state.__NAV_TOTAL_SET__...`).
+- `window.CanvasPatchHooks` и `window.webglHooks` — export surfaces функций, а не owner-state; логирование не должно описывать их как storage-owner.
+- `registerAllHooks` должен жить на `CanvasPatchContext`, а не на `window`.
+- Для WebGL `WEBGL_DICKts.js` является producer словаря, `webgl.js` применяет его в `CanvasPatchContext.state.__WEBGL_STATE__`, а `context.js` исполняет runtime hook path; все три части остаются в `module: "webgl"`, `surface: "webgl"`.
+---
+
+---
+#### [NORMATIVE] Observed Exit Contract  - Политика обработки исключений (обязателен для patch-функций и хелперов модуля)
+
+### Наблюдаемость выходов
+
+Любой контролируемый выход шага патча (`return` / `skip` / `rollback` / `throw`) MUST быть зафиксирован **до выхода** через `__DEGRADE__.diag(level, code, ctx, err)`.
+- Если `.diag` отсутствует: `__DEGRADE__(code, err, extra)`.
+- Если отсутствуют оба канала: safe-noop (без `console.*`).
+---
+
+
+
+
+---
+### [EXAMPLES] Observed Exit Contract (шаблон выхода)
+
+```js
+// Optional helpers (must not change behavior; only emit + return/rethrow).
+function __throw(code, ctx, err) { __emit("error", code, ctx, err); throw err; }
+
+// return
+return __exit("info", code, { module, diagTag, surface, key, stage:"apply", message:"ok", type:"ok", data:{ outcome:"return" } }, true);
+
+// `skip`/`rollback`
+return __exit("warn", code, { module, diagTag, surface, key, stage:"preflight", message:"skipped", type:"pipeline missing data", data:{ outcome:"skip", reason:"missing_dep" } }, false);
+
+// throw (do not use for service errors that would leak into public API)
+__throw(code, { module, diagTag, surface, key, stage:"apply", message:"apply threw", type:"browser structure missing data", data:{ outcome:"throw" } }, err);
+```
+
+
+## [APPENDIX] Шаблон модульного оформления
+
+Приложение: `Samples4Context\Contracts_mandaratory\APPENDIX_MODULE_CODE_TEMPLATE.md`.
+Ожидаемое маппинг `code`/`ctx` по модулям 
+
+Ниже таблицы: в каждом типовом месте фиксируем `code` + `ctx.*` + стратегию.
+Назначение приложения — зафиксировать единообразный формат представления примеров и таблиц (как обязательное правило оформления) без переопределения приоритетов [NORMATIVE] разделов настоящего документа.
