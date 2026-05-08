@@ -1,39 +1,39 @@
 ### `bootstrap_hide.js` (`module:'bootstrap_hide'`, `surface:'window'` / bootstrap lane)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| bootstrap input incomplete | `bootstrap_hide:*_transfer_incomplete` | `state.__*` owner-path | `bootstrap` | `browser structure missing data` | n/a | skip | n/a | soft-fail до logger-ready; fail-fast если нарушен обязательный bootstrap invariant |
+| bootstrap input incomplete | `bootstrap_hide:*_transfer_incomplete` | `state.__*` owner-path | `bootstrap` | `browser structure missing data` | n/a | skip | n/a |  до logger-ready; fail-fast если нарушен обязательный bootstrap invariant |
 | bootstrap owner create failed | `bootstrap_hide:*` | canonical owner-path | `bootstrap` | по причине | throw | throw | n/a | fail-fast |
 
 ### `set_log.js` (`module:'set_log'`, `surface:'logger'` / audit lane)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| logger shell cleanup skipped/failed | `set_log:window_logger_shell_*` | `<logger key>` | `cleanup` | `browser structure missing data` | n/a | skip | n/a | soft-fail |
+| logger shell cleanup skipped/failed | `set_log:window_logger_shell_*` | `<logger key>` | `cleanup` | `browser structure missing data` | n/a | skip | n/a |  |
 | synthetic module audit issue | `degrade:module_status:warn/error` | `<module or expected key>` | `audit` | `pipeline missing data` | n/a | return | n/a | telemetry / audit |
 | synthetic module audit resolution | `degrade:module_status:ok_after_recheck` | `<module or expected key>` | `audit` | `pipeline telemetry` | n/a | return | n/a | telemetry / audit |
 
 ### `core_window.js` (`module:'core_window'`, `surface:'core'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `safeDefine` define failed | `core_window:safeDefine:define_failed` | `<prop>` | `guard/apply` | `pipeline missing data` или `browser structure missing data` | n/a | throw | нет | fail-fast |
 | `Core.__internal` / `prng` missing | `core_window:core_internal_missing` / `core_window:core_prng_missing` | `Core.__internal*` | `preflight` | `pipeline missing data` | throw | throw | нет | fail-fast |
 | toString bridge invariant | `core_window:toString:*` | `Function.prototype.toString` | `preflight/contract/apply` | `contract violation` или `browser structure missing data` | n/a | throw | частично | fail-fast |
 | applyTargets fail-path | `<planItem.tag>:<fail_code>` | `<planItem.key>` | `preflight/apply/contract` | по причине | `planItem.policy` | `throw` если policy=`throw/strict`, иначе `skip` | да | policy-dependent |
-| hooksPost failed | `<planItem.tag>:hooksPost_failed` | `<planItem.key>` | `hook` | `pipeline missing data` | `planItem.policy` | наружу = original result | да, на уровне результата | soft-fail |
+| hooksPost failed | `<planItem.tag>:hooksPost_failed` | `<planItem.key>` | `hook` | `pipeline missing data` | `planItem.policy` | наружу = original result | да, на уровне результата |  |
 | promise contract failed | `<planItem.tag>:promise_contract_failed` | `<planItem.key>` | `contract` | `pipeline missing data` | throw | throw | нет | fail-fast |
 
 ### `context.js` (`module:'context'`, `surface:'canvas'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ctx2d / webgl / html hook failed | `context:getContext:*_hook_failed` | `hook.name` | `hook` | `pipeline missing data` | n/a | skip | n/a | soft-fail |
-| chain failed | `context:getContext:chain_failed` | `getContext` | `hook` | по причине | n/a | skip | n/a | soft-fail |
+| ctx2d / webgl / html hook failed | `context:getContext:*_hook_failed` | `hook.name` | `hook` | `pipeline missing data` | n/a | skip | n/a |  |
+| chain failed | `context:getContext:chain_failed` | `getContext` | `hook` | по причине | n/a | skip | n/a |  |
 
 ### `nav_total_set.js` (`module:'nav_total_set'`, `surface:'navigator'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Core / profile missing | `<groupTag>:core_missing` / `preflight_failed` / `group_skipped` | `<key>` | `preflight` | `pipeline missing data` | groupPolicy | throw/skip | n/a | policy-dependent |
 | apply failed | `<groupTag>:apply_failed` | `<key>` | `apply` | по причине | groupPolicy | throw/skip | да | policy-dependent |
@@ -41,47 +41,47 @@
 
 ### `screen.js` (`module:'screen'`, `surface:'screen'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | applyCoreTargetsGroup fail | `<groupTag>:<event>` | `<p.key>` | `preflight/apply/rollback` | по причине | groupPolicy | throw/skip | да | policy-dependent |
-| orientation redefine failed | `screen:orientation_*_redefine_failed` | `orientation.*` | `apply` | `browser structure missing data` | n/a | skip | n/a | soft-fail |
+| orientation redefine failed | `screen:orientation_*_redefine_failed` | `orientation.*` | `apply` | `browser structure missing data` | n/a | skip | n/a |  |
 
 ### `font_module.js` (`module:'fonts'`, `surface:'fonts'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | target preflight failed | `<groupTag>:target_preflight_failed` | `<target.key>` | `preflight` | `pipeline missing data` | groupPolicy | throw/skip | n/a | policy-dependent |
-| group skipped | `<groupTag>:group_skipped` | n/a | `preflight` | `pipeline missing data` | skip | skip | n/a | soft-fail |
+| group skipped | `<groupTag>:group_skipped` | n/a | `preflight` | `pipeline missing data` | skip | skip | n/a |  |
 | apply failed | `<groupTag>:apply_failed` | `<key>` | `apply` | по причине | groupPolicy | throw/skip | best-effort | policy-dependent |
-| dispatch failed | `fonts:event:dispatch_failed` | `dispatchEvent` | `runtime` | `pipeline missing data` | n/a | skip | n/a | soft-fail |
+| dispatch failed | `fonts:event:dispatch_failed` | `dispatchEvent` | `runtime` | `pipeline missing data` | n/a | skip | n/a |  |
 
 ### `canvas.js` (`module:'canvas'`, `surface:'canvas'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| toBlob / convertToBlob hook failed | `canvas:toBlob:hook_failed` / `canvas:convertToBlob:hook_failed` | `toBlob` / `convertToBlob` | `hook` | `pipeline missing data` | n/a | skip | n/a | soft-fail |
+| toBlob / convertToBlob hook failed | `canvas:toBlob:hook_failed` / `canvas:convertToBlob:hook_failed` | `toBlob` / `convertToBlob` | `hook` | `pipeline missing data` | n/a | skip | n/a |  |
 | `CanvasPatchHooks` define/hide failed | `canvas:CanvasPatchHooks:*` | `CanvasPatchHooks` | `apply` | `browser structure missing data` | n/a | skip/throw by branch | n/a | contract-dependent |
 
 ### `webgl.js` (`module:'webgl'`, `surface:'webgl'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| native getExtension throw | `webgl:getExtension:debug_renderer_info_throw` | `getExtension` | `runtime` | `browser structure missing data` | n/a | skip | n/a | soft-fail |
-| whitelist miss | `webgl:param_whitelist_miss` | `getParameter` | `guard` | `pipeline missing data` | n/a | skip | n/a | soft-fail |
-| shaderSource hook error | `webgl:shaderSourceHook:error` | `shaderSource` | `hook` | `pipeline missing data` | n/a | skip | n/a | soft-fail |
+| native getExtension throw | `webgl:getExtension:debug_renderer_info_throw` | `getExtension` | `runtime` | `browser structure missing data` | n/a | skip | n/a |  |
+| whitelist miss | `webgl:param_whitelist_miss` | `getParameter` | `guard` | `pipeline missing data` | n/a | skip | n/a |  |
+| shaderSource hook error | `webgl:shaderSourceHook:error` | `shaderSource` | `hook` | `pipeline missing data` | n/a | skip | n/a |  |
 | `webglHooks` define/hide failed | `webgl:webglHooks:*` | `webglHooks` | `apply` | `browser structure missing data` | n/a | skip / fatal by branch | n/a | contract-dependent |
 
 ### `webgpu_wl` (`module:'webgpu_wl'`, `surface:'webgpu'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| guard missing/failed | `webgpu_wl:guard_missing` / `webgpu_wl:guard_failed` | `__WEBGPU_WHITELIST__` | `guard` | `pipeline missing data` | n/a | skip | n/a | soft-fail |
+| guard missing/failed | `webgpu_wl:guard_missing` / `webgpu_wl:guard_failed` | `__WEBGPU_WHITELIST__` | `guard` | `pipeline missing data` | n/a | skip | n/a |  |
 | define hidden owner failed | `webgpu_wl:define_hidden_failed` | `__WEBGPU_WL_STATE__` | `apply` | `browser structure missing data` | throw | throw | да | fail-fast |
-| rollback failed | `webgpu_wl:rollback_failed` | `<state key>` | `rollback` | `browser structure missing data` | n/a | skip | best-effort | soft-fail |
+| rollback failed | `webgpu_wl:rollback_failed` | `<state key>` | `rollback` | `browser structure missing data` | n/a | skip | best-effort |  |
 
 ### `webgpu.js` (`module:'webgpu'`, `surface:'webgpu'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | env / wl / bridge missing | `webgpu:*_missing` | canonical owner-path | `preflight` | `pipeline missing data` | throw | throw | n/a | fail-fast |
 | applyTargets group fail | `<groupTag>:<event>` | `<p.key>` | `preflight/apply/rollback` | по причине | groupPolicy | throw/skip | да | policy-dependent |
@@ -89,14 +89,14 @@
 
 ### `audiocontext.js` (`module:'audiocontext'`, `surface:'audio'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| missing proto / non-configurable / noteIssue | `audiocontext:<reason>:<key>` | `<key>` | `guard` | по причине | n/a | skip | n/a | soft-fail |
-| `Core.applyTargets` missing | `audiocontext:core_apply_targets_missing` | `Core.applyTargets` | `preflight` | `pipeline missing data` | n/a | skip | n/a | soft-fail |
+| missing proto / non-configurable / noteIssue | `audiocontext:<reason>:<key>` | `<key>` | `guard` | по причине | n/a | skip | n/a |  |
+| `Core.applyTargets` missing | `audiocontext:core_apply_targets_missing` | `Core.applyTargets` | `preflight` | `pipeline missing data` | n/a | skip | n/a |  |
 
 ### `TimezoneOverride_source.js` (`module:'tz'`, `surface:'timezone'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | missing prerequisites | `tz:missing_<field>` | `<field>` | `preflight` | `pipeline missing data` | throw | throw | n/a | fail-fast |
 | missing engine parts | `tz:missing_<part>` | `<part>` | `preflight` | `browser structure missing data` | throw | throw | n/a | fail-fast |
@@ -105,38 +105,38 @@
 
 ### `GeoOverride_source.js` (`module:'geo'`, `surface:'geolocation'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | applyTargetGroup errors | `geo:methods:<event>` | `<p.key>` | `apply/rollback` | по причине | throw/skip | policy-dependent | да | policy-dependent |
 | patched marker | `geo:patched` | `patchGeolocation` | `apply` | `pipeline missing data` | n/a | skip | n/a | telemetry/info |
 
 ### `wrk.js` (`module:'wrk'`, `surface:'wrk'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | worker patch runtime/api missing | `wrk:worker_patch_runtime_missing` / `wrk:worker_patch_api_missing` | `C.state.__WRK__.runtime*` | `preflight` | `pipeline missing data` | throw | throw | n/a | fail-fast |
-| worker snapshot ready / cleanup hooks | `wrk:*` | `CanvasPatchContext.__workerEnvSnapshotReady__` / cleanup path | `runtime/cleanup` | `pipeline missing data` | n/a | skip / return | n/a | soft-fail |
+| worker snapshot ready / cleanup hooks | `wrk:*` | `CanvasPatchContext.__workerEnvSnapshotReady__` / cleanup path | `runtime/cleanup` | `pipeline missing data` | n/a | skip / return | n/a |  |
 | service worker registration lane issues | `wrk:*service_worker*` | `C.state.__WRK__.runtime.serviceWorkerLane` | `guard/preflight/runtime` | `pipeline missing data` | by branch | skip/throw | n/a | policy-dependent |
 | WorkerPatchHooks ready/missing | `wrk:*WorkerPatchHooks*` | `C.state.__WRK__.hooks.WorkerPatchHooks` | `apply/preflight` | `pipeline missing data` | by branch | skip/throw | n/a | policy-dependent |
 
 ### `set_reflect.js` (`module:'wrk_BRIDGE'`, `surface:'wrk_BRIDGE'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | worker toString owner define failed | `wrk:core_tostring_state_owner_define_failed` | `C.state.__WRK__.runtime.__CORE_TOSTRING_STATE__` | `apply` | `pipeline missing data` | throw | throw | n/a | fail-fast |
 | bridge candidate/state rejected | `wrk:toString_*` | `Function.prototype.toString` | `preflight` | `contract violation` | n/a | return/throw by branch | n/a | contract-dependent |
 
 ### `worker_bootstrap.js` (`module:'worker_bootstrap'`, `surface:'worker_bootstrap'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | inline sources missing | `worker_bootstrap:inline_*_missing` | `inlinePatch` / `inlineReflect` | `preflight` | `pipeline missing data` | throw | throw | n/a | fail-fast |
 | worker bootstrap state/hook missing | `worker_bootstrap:*` | `C.state.__WRK__.bootstrap` / `WorkerPatchHooks` | `preflight/apply` | `pipeline missing data` | by branch | skip/throw | n/a | policy-dependent |
-| guard release failed | `worker_bootstrap:guard_release_failed` | `guard` | `guard` | `pipeline missing data` | n/a | skip | n/a | soft-fail |
+| guard release failed | `worker_bootstrap:guard_release_failed` | `guard` | `guard` | `pipeline missing data` | n/a | skip | n/a |  |
 
 ### `WORKER_PATCH_SRC.js` (`module:'WORKER_PATCH_SRC'`, `surface:'worker'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | service lane required / scope mismatch | `worker_patch_src:scope_kind:*` | `__WORKER_SCOPE_KIND__` | `contract/runtime` | `pipeline missing data` или `browser structure missing data` | throw | throw | n/a | fail-fast |
 | accessor target / bridge missing | `worker_patch_src:apply_accessor_targets:*` | canonical owner-path | `preflight/apply` | `pipeline missing data` | throw | throw | n/a | fail-fast |
@@ -145,7 +145,7 @@
 
 ### `sw_prelude.js` (`module:'sw_prelude'`, `surface:'service_worker'`)
 
-| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | soft-fail/fail-fast |
+| Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | service scope / lane mismatch | `sw_prelude:scope_kind_*` / `sw_prelude:lane_mismatch` | `__WORKER_SCOPE_KIND__` / `__SW_BOOTSTRAP_ENV__.*` | `contract` | `pipeline missing data` | throw | throw | n/a | fail-fast |
 | env / uaData / webgl missing | `sw_prelude:*_missing` / `*_invalid` | canonical owner-path | `preflight/runtime` | `pipeline missing data` | throw | throw | n/a | fail-fast |
