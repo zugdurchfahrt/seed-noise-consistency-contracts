@@ -1,3 +1,23 @@
+﻿# Appendix: module projection for DEGRADE / Guard contracts
+
+Этот файл является module projection / inventory table для текущего pipeline.
+
+Нормативные документы:
+- `3._DEGRADE_Contract.md` - диагностический канал, `ctx` shape, observed exits, centralized classification.
+- `5._GuardFlagSEED.md` - guard lifecycle, token ownership, release/lock semantics, seed owner-space.
+
+Правила чтения таблиц:
+- Таблицы фиксируют ожидаемый/наблюдаемый mapping модулей на общую модель.
+- Таблицы не переопределяют `DEGRADE` и `GuardFlagSEED`.
+- Если строка отражает legacy/transitional код, она считается inventory note, а не разрешением вводить новую норму.
+- `ctx.stage: 'guard'` используется для acquisition/already-patched/read-write guard failures before apply.
+- Core-level `releaseGuardFlag(...)` events относятся к `ctx.stage: 'rollback'`.
+- Module-local failure while trying to call release may still exist in current code as legacy `stage:'guard'`; целевое гармоничное состояние - `stage:'rollback'` when the failure belongs to rollback/release.
+- `ctx.type` в таблице является input cause label; final `extra.type` может быть централизованно переклассифицирован в `set_log.js`.
+- `policy` не задается через `ctx.type` и не меняется logger classification.
+
+---
+
 ### `bootstrap_hide.js` (`module:'bootstrap_hide'`, `surface:'window'` / bootstrap lane)
 
 | Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
@@ -17,6 +37,10 @@
 
 | Где | code | ctx.key | ctx.stage | ctx.type | policy | throw/`skip` | `rollback` | /fail-fast |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Guard already acquired | `<tag>:already_patched` | `guard` или non-`__PATCH_*` key | `guard` | input: `pipeline missing data`; final classifier: `guard_exit` | n/a | skip | n/a | idempotent entrypoint exit |
+| Guard read/write failed | `<tag>:guard_exception` / `<tag>:guard_write_failed` | `guard` или non-`__PATCH_*` key | `guard` | input: `pipeline missing data`; final classifier: `guard_failed` | n/a | skip | n/a | fail closed for module entrypoint |
+| Guard release blocked by failed rollback | `<tag>:guard_release_skipped` | `guard` или non-`__PATCH_*` key | `rollback` | final classifier: `rollback_failed` | n/a | skip | no release | guard remains locked |
+| Guard released after clean rollback | `<tag>:guard_released` | `guard` или non-`__PATCH_*` key | `rollback` | input: `pipeline missing data` | n/a | rollback | yes | retry allowed only by external re-entry |
 | `safeDefine` define failed | `core_window:safeDefine:define_failed` | `<prop>` | `guard/apply` | `pipeline missing data` или `browser structure missing data` | n/a | throw | нет | fail-fast |
 | `Core.__internal` / `prng` missing | `core_window:core_internal_missing` / `core_window:core_prng_missing` | `Core.__internal*` | `preflight` | `pipeline missing data` | throw | throw | нет | fail-fast |
 | toString bridge invariant | `core_window:toString:*` | `Function.prototype.toString` | `preflight/contract/apply` | `contract violation` или `browser structure missing data` | n/a | throw | частично | fail-fast |
@@ -132,7 +156,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | inline sources missing | `worker_bootstrap:inline_*_missing` | `inlinePatch` / `inlineReflect` | `preflight` | `pipeline missing data` | throw | throw | n/a | fail-fast |
 | worker bootstrap state/hook missing | `worker_bootstrap:*` | `C.state.__WRK__.bootstrap` / `WorkerPatchHooks` | `preflight/apply` | `pipeline missing data` | by branch | skip/throw | n/a | policy-dependent |
-| guard release failed | `worker_bootstrap:guard_release_failed` | `guard` | `guard` | `pipeline missing data` | n/a | skip | n/a |  |
+| guard release failed | `worker_bootstrap:guard_release_failed` | `guard` | legacy: `guard`; target: `rollback` | `pipeline missing data` | n/a | skip | n/a | transitional module-local release-call failure |
 
 ### `WORKER_PATCH_SRC.js` (`module:'WORKER_PATCH_SRC'`, `surface:'worker'`)
 
